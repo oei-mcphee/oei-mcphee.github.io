@@ -1,0 +1,937 @@
+<!doctype html>
+<html>
+<head>
+	<meta charset="utf-8">
+	<title>Hello World</title>
+</head>
+	<script src="pixi.min.js"></script>
+<body onload="init();">
+	<div align="center">
+		<canvas id="game-canvas" width="1024" height="768"></canvas>
+	</div>
+	<div id="description" align="center">
+		<h1>A GAME WHERE YOU SHOUT AT ISLANDS BECAUSE THEY LOOKED AT YOU WEIRD</h1>
+		<h4>stand in the yelling zone and mash that spacebar. watch out for goons. pet some good dogs!</h4>
+	</div>
+
+	<script type="text/javascript">
+		// aliases
+		var Application = PIXI.Application,
+			loader = PIXI.loader,
+			resources = PIXI.loader.resources,
+			Sprite = PIXI.Sprite;
+
+		var type = "WebGL";
+		if(!PIXI.utils.isWebGLSupported()) {
+			type = "canvas";
+		}
+
+		PIXI.utils.sayHello(type);
+
+		// settings
+		var app_width = 1024;
+		var app_height = 768;
+		var app_bg_color = 0x66CCFF;
+		var islands_x_bounds = -400;
+		var islands_x_start_position = app_width + 300;
+		var islands_y_start_position = 30;
+		var islands_x_velocity = 10;
+		var islands_total_height = 400;
+		var islands_total_width = 400;
+		var islands_face_width = 400;
+		var islands_face_height = 260;
+		var islands_face_num_cols = 5;
+		var islands_face_num_rows = 5;
+		var islands_face_offset_x = 0;
+		var islands_face_offset_y = 0;
+		var islands_body_width = 400;
+		var islands_body_height = 260;
+		var islands_body_num_cols = 5;
+		var islands_body_num_rows = 5;
+		var islands_trees_width = 400;
+		var islands_trees_height = 260;
+		var islands_trees_offset_x = 0;
+		var islands_trees_offset_y = 0;
+		var islands_trees_num_cols = 5;
+		var islands_trees_num_rows = 4;
+		var player_x_velocity = 10;
+		var player_y_velocity = 10;
+		var player_width = 50;
+		var player_height = 50;
+		var player_bounds_left = 0;
+		var player_bounds_right = app_width - player_width;
+		var player_bounds_up = 400;
+		var player_bounds_down = app_height - player_height;
+		var yelling_zone_width = 250;
+		var yelling_zone_height = 100;
+		var yelling_zone_left = (app_width / 2) - (yelling_zone_width / 2);
+		var yelling_zone_right = yelling_zone_left + yelling_zone_width;
+		var yelling_zone_up = (app_height / 2);
+		var yelling_zone_down = yelling_zone_up + yelling_zone_height;
+		var yelling_zone_text;
+		var yelling_zone_text_timeout = Date.now();
+		var yelling_zone_text_timeout_milliseconds = 2000;
+		var water_scroll_velocity = 0.512;
+		var angry_captain_zones = [384, 480, 576, 672];
+		var angry_captain_velocity = 5;
+		var score_text;
+		var difficulty_text;
+		var difficulty_text_x = 0;
+		var difficulty_text_y = 50;
+
+		var app = new PIXI.Application({
+			width: app_width,
+			height: app_height,
+			antialias: true,
+			transparent: false,
+			resolution: 1,
+			backgroundColor: 0x66CCFF
+		});
+
+		// images
+		var farTexture; // background (water)
+		var farSprite;
+		var test_island_texture; // island
+		var test_island_sprite;
+		var hot_deck_texture; // ship deck
+		var hot_deck_sprite;
+		var protagTexture; // drunk man
+		var protagSprite;
+		var island_face_sprites = [];
+		var island_face_tilesheet_texture;
+		var island_body_sprites = [];
+		var island_body_tilesheet_texture;
+		var island_trees_sprites = [];
+		var island_trees_tilesheet_texture;
+		var angry_server_texture;
+		var angry_captain_sprites = [];
+		var background_texture;
+		var background_sprite;
+		var splash_background_texture;
+		var splash_background_sprite;
+		var splash_start_button_texture;
+		var splash_start_button_sprite;
+		var end_screen_background_texture;
+		var end_screen_background_sprite;
+		var end_screen_text_texture;
+		var end_screen_text_sprite;
+		var angry_captain_animation_sprite;
+		var angry_captain_animation_textures = [];
+		var friendly_dog_texture;
+		var friendly_dog_sprites = [];
+
+		// game stats
+		var points = 0;
+		var captains_active = false;
+		var paused = false;
+		var onSplashScreen = true;
+		var onEndScreen = false;
+		var angry_captains_left = false;
+		var captains_interval = 5000;
+		var difficulty_interval = 20000;
+		var next_captains_spawn = 0;
+		var game_start_time = 0;
+		var difficulty = 1;
+		var friendly_dog_targets_x = [];
+		var friendly_dog_targets_y = [];
+		var friendly_dog_velocity = 2;
+		var friendly_dog_active = false;
+		var friendly_dog_timer = 10000; // every 10 seconds, spawn a dog
+		var friendly_dog_next_timestamp = 0;
+		var friendly_dog_maximum = 5;
+		var friendly_dog_pet_timer = 2000;
+		var friendly_dog_pet_timestamp = 0;
+		var player_is_petting_dog = false;
+		var friendly_dog_current_pet;
+		var friendly_dog_points = 50;
+
+		// temp - yelling zone bounds debug
+		var yelling_zone_rectangle;
+		var yelling_zone_style = new PIXI.TextStyle({
+			fontFamily: "Arial",
+			fontSize: 36,
+			fill: "white",
+			stroke: '#ff3300',
+			strokeThickness: 4
+		});
+
+		var friendly_dog_style = new PIXI.TextStyle({
+			fontFamily: "Arial",
+			fontSize: 10,
+			fill: "white",
+			stroke: '#ff3300',
+			strokeThickness: 2
+		});
+
+		// key listener objects
+		var key_listener_up;
+		var key_listener_left;
+		var key_listener_right;
+		var key_listener_down;
+
+		// image containers and renderer
+		var stage;
+		var islands_container;
+		var splash_screen_container;
+		var end_screen_container;
+		var renderer;
+
+		// helper function to more easily bind keys
+		function keyboard(value) {
+			let key = {};
+			key.value = value;
+			key.isDown = false;
+			key.isUp = true;
+			key.press = undefined;
+			key.release = undefined;
+			key.downHandler = event => {
+				if(event.key === key.value) {
+					if(key.isUp && key.press) {
+						key.press();
+					}
+
+					key.isDown = true;
+					key.isUp = false;
+					event.preventDefault();
+				}
+			};
+
+			key.upHandler = event => {
+				if(event.key === key.value) {
+					if(key.isDown && key.release) {
+						key.release();
+					}
+
+					key.isDown = false;
+					key.isUp = true;
+					event.preventDefault();
+				}
+			};
+
+			const downListener = key.downHandler.bind(key);
+			const upListener = key.upHandler.bind(key);
+
+			window.addEventListener("keydown", downListener, false);
+			window.addEventListener("keyup", upListener, false);
+
+			// for detaching
+			key.unsubscribe = () => {
+				window.removeEventListener("keydown", downListener);
+				window.removeEventListener("keyup", upListener);
+			};
+
+			return key;
+		}
+
+		// entry point/initialization
+		function init() {
+			stage = new PIXI.Container();
+			islands_container = new PIXI.Container();
+			splash_screen_container = new PIXI.Container();
+			end_screen_container = new PIXI.Container();
+
+			islands_container.height = islands_total_height;
+			islands_container.width = islands_total_width;
+
+			renderer = PIXI.autoDetectRenderer(
+				1024, 768, {view:document.getElementById("game-canvas")});
+
+			splash_background_texture = PIXI.Texture.fromImage("splash_bg.png");
+			splash_background_sprite = new Sprite(splash_background_texture);
+			splash_screen_container.addChild(splash_background_sprite);
+
+			splash_start_button_texture = PIXI.Texture.fromImage("start_button.png");
+			splash_start_button_sprite = new Sprite(splash_start_button_texture);
+			splash_start_button_sprite.position.x = (1024 / 2) - 100;
+			splash_start_button_sprite.position.y = (768 / 2) - 50;
+			splash_start_button_sprite.interactive = true;
+			splash_start_button_sprite.buttonMode = true;
+			splash_start_button_sprite.on('pointerdown', onStartClicked);
+			splash_screen_container.addChild(splash_start_button_sprite);
+
+			end_screen_background_texture = PIXI.Texture.fromImage("splash_bg.png");
+			end_screen_background_sprite = new Sprite(end_screen_background_texture);
+			end_screen_container.addChild(end_screen_background_sprite);
+			end_screen_text_texture = PIXI.Texture.fromImage("end_text.png");
+			end_screen_text_sprite = new Sprite(end_screen_text_texture);
+			end_screen_text_sprite.position.x = splash_start_button_sprite.position.x;
+			end_screen_text_sprite.position.y = splash_start_button_sprite.position.y;
+			end_screen_text_sprite.interactive = true;
+			end_screen_text_sprite.buttonMode = true;
+			end_screen_text_sprite.on('pointerdown', onEndClicked);
+			end_screen_container.addChild(end_screen_text_sprite);
+
+			angry_captain_animation_textures[0] = PIXI.Texture.fromImage("angry_captain_1.png");
+			angry_captain_animation_textures[1] = PIXI.Texture.fromImage("angry_captain_1.png");
+			angry_captain_animation_textures[2] = PIXI.Texture.fromImage("angry_captain_1.png");
+			angry_captain_animation_textures[3] = PIXI.Texture.fromImage("angry_captain_1.png"); // not a typo i promise
+
+			angry_captain_animation_sprite = new PIXI.extras.AnimatedSprite(angry_captain_animation_textures);
+
+			background_texture = PIXI.Texture.fromImage("background.png");
+			background_sprite = new Sprite(background_texture);
+			background_sprite.position.x = 0;
+			background_sprite.position.y = 0;
+
+			farTexture = PIXI.Texture.fromImage("waterlayer.png");
+			farSprite = new PIXI.extras.TilingSprite(farTexture, 1024, 400);
+			farSprite.position.x = 0;
+			farSprite.position.y = (768 - 550);
+			farSprite.tilePosition.x = 0;
+			farSprite.tilePosition.y = 0;
+
+			hot_deck_texture = PIXI.Texture.fromImage("newhotdeck.png");
+			hot_deck_sprite = new Sprite(hot_deck_texture);
+			hot_deck_sprite.position.x = 0;
+			hot_deck_sprite.position.y = (768 - 380);
+
+			protagTexture = PIXI.Texture.fromImage("xoco.png");
+			protagSprite = new Sprite(protagTexture);
+			protagSprite.width = 25;
+			protagSprite.height = 50;
+			protagSprite.position.x = 500;
+			protagSprite.position.y = (768 - 250);
+			protagSprite.vx = 0;
+			protagSprite.vy = 0;
+
+			angry_server_texture = PIXI.Texture.fromImage("angry_captain.png");
+			friendly_dog_texture = PIXI.Texture.fromImage("xoco.png");
+			friendly_dog_text = new PIXI.Text("RUH!", friendly_dog_style);
+			friendly_dog_text.alpha = 0;
+
+			// TEMP: rectangle for the yelling zone
+			yelling_zone_rectangle = new PIXI.Graphics();
+			yelling_zone_rectangle.lineStyle(4, 0xFF3300, 1);
+			yelling_zone_rectangle.beginFill(0x66CCFF);
+			yelling_zone_rectangle.drawRect(0, 0, yelling_zone_width, yelling_zone_height);
+			yelling_zone_rectangle.endFill();
+			yelling_zone_rectangle.x = yelling_zone_left;
+			yelling_zone_rectangle.y = yelling_zone_up;
+
+			yelling_zone_text = new PIXI.Text("#$!@**$!", yelling_zone_style);
+			yelling_zone_text.alpha = 0;
+
+			score_text = new PIXI.Text("Cool Points: ", yelling_zone_style);
+			difficulty_text = new PIXI.Text("Level: ", yelling_zone_style);
+
+			// create key listeners
+			key_listener_down = keyboard("ArrowDown");
+			key_listener_up = keyboard("ArrowUp");
+			key_listener_right = keyboard("ArrowRight");
+			key_listener_left = keyboard("ArrowLeft");
+			key_listener_interact = keyboard(" "); //spacebar
+
+			key_listener_left.press = () => {
+				protagSprite.vx = -player_x_velocity;
+			};
+
+			key_listener_left.release = () => {
+				if(!key_listener_right.isDown) {
+					protagSprite.vx = 0;
+				}
+			};
+
+			key_listener_up.press = () => {
+				protagSprite.vy = -player_y_velocity;
+			};
+
+			key_listener_up.release = () => {
+				if(!key_listener_down.isDown) {
+					protagSprite.vy = 0;
+				}
+			};
+
+			key_listener_right.press = () => {
+				protagSprite.vx = player_x_velocity;
+			};
+
+			key_listener_right.release = () => {
+				if(!key_listener_left.isDown) {
+					protagSprite.vx = 0;
+				}
+			};
+
+			key_listener_down.press = () => {
+				protagSprite.vy = player_y_velocity;
+			};
+
+			key_listener_down.release = () => {
+				if(!key_listener_up.isDown) {
+					protagSprite.vy = 0;
+				}
+			};
+
+			key_listener_interact.release = () => {
+				interact();
+			};
+
+			PIXI.loader.add([
+				"island_faces.png",
+				"island_bodies.png",
+				"island_trees.png"
+				]).load(loadIslandSprites);
+
+			setup_splash_screen_stage();
+
+			game_start_time = Date.now();
+
+			requestAnimationFrame(update);
+		}
+
+		function endGame()
+		{
+			setup_end_game_screen_stage();
+		}
+
+		function onStartClicked()
+		{
+			setup_main_game_stage();
+		}
+
+		function onEndClicked()
+		{
+			setup_splash_screen_stage();
+			onSplashScreen = true;
+		}
+
+		function setup_end_game_screen_stage()
+		{
+			stage.removeChildren();
+			stage.addChild(end_screen_container);
+			onEndScreen = true;
+		}
+
+		function setup_main_game_stage()
+		{
+			stage.removeChildren();
+			stage.addChild(background_sprite);
+			stage.addChild(islands_container);
+			stage.addChild(farSprite);
+			stage.addChild(hot_deck_sprite);
+			stage.addChild(yelling_zone_rectangle);
+			stage.addChild(protagSprite);
+			stage.addChild(yelling_zone_text);
+			stage.addChild(score_text);
+			stage.addChild(difficulty_text);
+			stage.addChild(friendly_dog_text);
+
+			reset_positions();
+			onSplashScreen = false;
+			onEndScreen = false;
+			game_start_time = Date.now();
+			difficulty = 1;
+		}
+
+		function setup_splash_screen_stage()
+		{
+			stage.removeChildren();
+			stage.addChild(splash_screen_container);
+		}
+
+		function reset_positions()
+		{
+			if(angry_captain_sprites.length != 0)
+			{
+				angry_captain_sprites = [];
+				captains_active = false;
+				next_captains_spawn = 0;
+				captains_interval = 5000;
+			}
+
+			if(friendly_dog_sprites.length != 0)
+			{
+				friendly_dog_sprites = [];
+				friendly_dog_targets_x = [];
+				friendly_dog_targets_y = [];
+				friendly_dog_pet_timestamp = 0;
+				friendly_dog_current_pet = {};
+			}
+
+			prepareNewIsland();
+			protagSprite.position.x = 500;
+			protagSprite.position.y = (768 - 250);
+			protagSprite.vx = 0;
+			protagSprite.vy = 0;
+
+			points = 0;
+		}
+
+		function loadIslandSprites()
+		{
+			island_face_tilesheet_texture = new PIXI.Texture(resources["island_faces.png"].texture);
+			island_body_tilesheet_texture = new PIXI.Texture(resources["island_bodies.png"].texture);
+			island_trees_tilesheet_texture = new PIXI.Texture(resources["island_trees.png"].texture);
+			for(var r = 0; r < islands_face_num_rows; ++r)
+			{
+				for(var c = 0; c < islands_face_num_cols; ++c)
+				{
+					var rowOffset = (c * islands_face_width);
+					var colOffset = (r * islands_face_height);
+					var frame = new PIXI.Rectangle(rowOffset, colOffset, islands_face_width, islands_face_height);
+					island_face_tilesheet_texture.frame = frame;
+					island_face_sprites.push(new Sprite(island_face_tilesheet_texture));
+					island_face_tilesheet_texture = new PIXI.Texture(resources["island_faces.png"].texture);
+				}
+			}
+
+			for(var r = 0; r < islands_body_num_rows; ++r)
+			{
+				for(var c = 0; c < islands_body_num_cols; ++c)
+				{
+					var rowOffset = (c * islands_body_width);
+					var colOffset = (r * islands_body_height);
+					var frame = new PIXI.Rectangle(rowOffset, colOffset, islands_body_width, islands_body_height);
+					island_body_tilesheet_texture.frame = frame;
+					island_body_sprites.push(new Sprite(island_body_tilesheet_texture));
+					island_body_tilesheet_texture = new PIXI.Texture(resources["island_bodies.png"].texture);
+				}
+			}
+
+			for(var r = 0; r < islands_trees_num_rows; ++r)
+			{
+				for(var c = 0; c < islands_trees_num_cols; ++c)
+				{
+					var rowOffset = (c * islands_trees_width);
+					var colOffset = (r * islands_trees_height);
+					var frame = new PIXI.Rectangle(rowOffset, colOffset, islands_trees_width, islands_trees_height);
+					island_trees_tilesheet_texture.frame = frame;
+					island_trees_sprites.push(new Sprite(island_trees_tilesheet_texture));
+					island_trees_tilesheet_texture = new PIXI.Texture(resources["island_trees.png"].texture);
+				}
+			}
+
+			prepareNewIsland();
+		}
+
+		function spawnAngryServers()
+		{
+			for(var x = 0; x < angry_captain_sprites.length; ++x)
+			{
+				stage.removeChild(angry_captain_sprites[x]);
+			}
+			angry_captain_sprites = [];
+
+			var numZones = Math.floor(Math.random() * 3) + 1;
+
+			var validZones = [...angry_captain_zones];
+			var left = Math.floor(Math.random() * 2);
+			if(left == 0) { left = false; }
+			else { left = true; }
+			angry_captains_left = left;
+
+			var currentLength = validZones.length;
+			for(var x = 0; x < (currentLength - numZones); ++x)
+			{
+				var whichZone = Math.floor(Math.random() * validZones.length);
+				validZones.splice(whichZone, 1);
+			}
+
+			for(var x = 0; x < validZones.length; ++x)
+			{
+				var sprite = new PIXI.extras.AnimatedSprite(angry_captain_animation_textures);
+				if(left)
+				{
+					sprite.x = 0;
+				}
+				else
+				{
+					sprite.x = app_width - sprite.width - 25;
+				}
+
+				sprite.y = validZones[x];
+				sprite.play();
+
+				stage.addChild(sprite);
+				angry_captain_sprites.push(sprite);
+			}
+
+			captains_active = true;
+			next_captains_spawn = 0;
+		}
+
+		function spawn_friendly_dog()
+		{
+			// always spawn on either the left or right side
+			var left = Math.floor(Math.random() * 2);
+			if(left === 0) { left = false; }
+			else { left = true; }
+
+			friendly_dog_sprites.push(new Sprite(friendly_dog_texture));
+			friendly_dog_sprites[friendly_dog_sprites.length-1].height = 50;
+			friendly_dog_sprites[friendly_dog_sprites.length-1].width = 50;
+			friendly_dog_sprites[friendly_dog_sprites.length-1].position.y = (app_height / 2) + 50;
+			if(left)
+			{
+				friendly_dog_sprites[friendly_dog_sprites.length-1].position.x = 0;
+			}
+			else
+			{
+				friendly_dog_sprites[friendly_dog_sprites.length-1].position.x = app_width - 100;
+			}
+
+			stage.addChild(friendly_dog_sprites[friendly_dog_sprites.length-1]);
+
+			var one_third = app_width / 3;
+			var top_bound = (app_height / 2);
+			var point_x = Math.floor(Math.random() * one_third) + one_third;
+			var point_y = Math.floor(Math.random() * top_bound) + top_bound;
+			if(point_y < top_bound) { point_y = top_bound + 100; }
+			else if(point_y > app_height) { point_y = app_height - 100; }
+
+			friendly_dog_targets_x.push(point_x);
+			friendly_dog_targets_y.push(point_y);
+
+			var currentTime = Date.now();
+			friendly_dog_next_timestamp = currentTime + friendly_dog_timer;
+		}
+
+		function update_friendly_dog()
+		{
+			for(var dog = 0; dog < friendly_dog_sprites.length; ++dog)
+			{
+				// if we're colliding w/ the player, stop
+				if(!player_is_petting_dog && AABB(friendly_dog_sprites[dog].position.x, friendly_dog_sprites[dog].position.y, friendly_dog_sprites[dog].width, friendly_dog_sprites[dog].height, protagSprite.position.x, protagSprite.position.y, protagSprite.width, protagSprite.height))
+				{
+					friendly_dog_sprites[dog].vx = 0;
+					friendly_dog_sprites[dog].vy = 0;
+
+					// lock the player for an amount of time
+					player_is_petting_dog = true;
+					friendly_dog_current_pet = friendly_dog_sprites[dog];
+					friendly_dog_pet_timestamp = Date.now() + friendly_dog_pet_timer;
+				}
+				else if(friendly_dog_current_pet != friendly_dog_sprites[dog])
+				{
+					if(AABB(friendly_dog_sprites[dog].position.x, friendly_dog_sprites[dog].position.y, friendly_dog_sprites[dog].width, friendly_dog_sprites[dog].height, friendly_dog_targets_x[dog], friendly_dog_targets_y[dog], 5, 5))
+					{
+						// dog has reached his destination. park him here for a bit
+						friendly_dog_sprites[dog].vx = 0;
+						friendly_dog_sprites[dog].vy = 0;
+
+					}
+					else
+					{
+						if(friendly_dog_sprites[dog].position.x < friendly_dog_targets_x[dog])
+						{
+							friendly_dog_sprites[dog].vx = friendly_dog_velocity;
+						}
+						else
+						{
+							friendly_dog_sprites[dog].vx = -friendly_dog_velocity;
+						}
+
+						if(friendly_dog_sprites[dog].y < friendly_dog_targets_y[dog])
+						{
+							friendly_dog_sprites[dog].vy = friendly_dog_velocity;
+						}
+						else
+						{
+							friendly_dog_sprites[dog].vy = -friendly_dog_velocity;
+						}
+
+						friendly_dog_sprites[dog].position.x += friendly_dog_sprites[dog].vx;
+						friendly_dog_sprites[dog].position.y += friendly_dog_sprites[dog].vy;
+					}
+				}
+			}
+		}
+
+		function update_angry_captains()
+		{
+			for(var x = 0; x < angry_captain_sprites.length; ++x)
+			{
+				var mult = 1;
+				if(!angry_captains_left) { mult = -1; }
+				angry_captain_sprites[x].position.x += (mult * (angry_captain_velocity + difficulty));
+
+				if(!angry_captains_left)
+				{
+					if(angry_captain_sprites[x].position.x <= angry_captain_sprites[x].width)
+					{
+						captains_active = false;
+						next_captains_spawn = Date.now() + (captains_interval * (1 / difficulty));
+						break;
+					}
+				}
+				else
+				{
+					if(angry_captain_sprites[x].position.x >= (app_width - angry_captain_sprites[x].width))
+					{
+						captains_active = false;
+						next_captains_spawn = Date.now() + (captains_interval * (1 / difficulty));
+						break;
+					}
+				}
+			}
+
+			if(captains_active == false)
+			{
+				for(var x = 0; x < angry_captain_sprites.length; ++x)
+				{
+					stage.removeChild(angry_captain_sprites[x]);
+				}
+
+				angry_captain_sprites = [];
+			}
+			else
+			{
+				// see if we've crashed into any
+				for(var x = 0; x < angry_captain_sprites.length; ++x)
+				{
+					if(AABB(angry_captain_sprites[x].position.x, angry_captain_sprites[x].position.y, angry_captain_sprites[x].width, angry_captain_sprites[x].height, protagSprite.position.x, protagSprite.position.y, protagSprite.width, protagSprite.height))
+					{
+						captain_crash();
+						break;
+					}
+				}
+			}
+		}
+
+		function captain_crash()
+		{
+			setup_end_game_screen_stage();
+		}
+
+		function prepareNewIsland()
+		{
+			var faceIndex = Math.floor(Math.random() * island_face_sprites.length);
+			var bodyIndex = Math.floor(Math.random() * island_body_sprites.length);
+			var treeIndex = Math.floor(Math.random() * island_trees_sprites.length);
+			islands_container.removeChildren();
+			island_face_sprites[faceIndex].position.x = islands_face_offset_x;
+			island_face_sprites[faceIndex].position.y = islands_face_offset_y;
+			island_trees_sprites[treeIndex].position.x = islands_trees_offset_x;
+			island_trees_sprites[treeIndex].position.y = islands_trees_offset_y;
+			islands_container.addChild(island_body_sprites[bodyIndex]);
+			islands_container.addChild(island_trees_sprites[treeIndex]);
+			islands_container.addChild(island_face_sprites[faceIndex]);
+			islands_container.position.x = islands_x_start_position;
+			islands_container.position.y = islands_y_start_position;
+		}
+
+		// game thread
+		function update()
+		{
+			if(!paused && !onSplashScreen && !onEndScreen)
+			{
+				var time = Date.now();
+				// TODO: maybe move this to a game logic function
+				farSprite.tilePosition.x -= water_scroll_velocity;
+			
+				islands_container.position.x -= islands_x_velocity;
+				if(islands_container.position.x <= islands_x_bounds)
+				{
+					prepareNewIsland();
+				}
+
+				// clamp player bounds
+				clampPlayerPosition();
+
+				// check to see if text is still visible
+				if(yelling_zone_text.alpha != 0)
+				{
+					if(time - yelling_zone_text_timeout >= yelling_zone_text_timeout_milliseconds)
+					{
+						yelling_zone_text.alpha = 0;
+						yelling_zone_text_timeout = 0;
+					}
+				}
+
+				if(captains_active)
+				{
+					update_angry_captains();
+				}
+				else
+				{
+					// should we spawn some?
+					// first frame needs to set a new interval
+					if(next_captains_spawn == 0)
+					{
+						next_captains_spawn = Date.now() + captains_interval;
+					}
+					else
+					{
+						if(time >= next_captains_spawn)
+						{
+							spawnAngryServers();
+						}
+					}
+				}
+
+				if(friendly_dog_sprites.length > 0)
+				{
+					update_friendly_dog();
+				}
+
+				if(friendly_dog_sprites.length < friendly_dog_maximum && difficulty >= 2 && time >= friendly_dog_next_timestamp)
+				{
+					spawn_friendly_dog();
+				}
+
+				if(player_is_petting_dog && (time > friendly_dog_pet_timestamp))
+				{
+					player_is_petting_dog = false;
+					// remove the current petting dog
+					for(var x = 0; x < friendly_dog_sprites.length; ++x)
+					{
+						if(friendly_dog_sprites[x] == friendly_dog_current_pet)
+						{
+							friendly_dog_sprites.splice(x, 1);
+							friendly_dog_targets_x.splice(x, 1);
+							friendly_dog_targets_y.splice(x, 1);
+							stage.removeChild(friendly_dog_current_pet);
+							friendly_dog_current_pet = {};
+							points += friendly_dog_points;
+						}
+					}
+				}
+
+				update_score();
+				update_difficulty(time);
+			}
+
+			renderer.render(stage);
+			requestAnimationFrame(update);
+		}
+
+		function update_difficulty(timestamp)
+		{
+			if(difficulty != 5)
+			{
+				if(timestamp - game_start_time >= (difficulty * difficulty_interval))
+				{
+					difficulty++;
+				}
+			}
+
+			stage.removeChild(difficulty_text);
+			difficulty_text = new PIXI.Text("Level: " + difficulty, yelling_zone_style);
+			difficulty_text.position.x = difficulty_text_x;
+			difficulty_text.position.y = difficulty_text_y;
+			stage.addChild(difficulty_text);
+		}
+
+		function update_score()
+		{
+			stage.removeChild(score_text);
+			score_text = new PIXI.Text("Cool Points: " + points, yelling_zone_style);
+			stage.addChild(score_text);
+		}
+
+		// helper for AABB check against yelling zone
+		function areWeInYellingZone()
+		{
+			return AABB(protagSprite.position.x, protagSprite.position.y, player_width, player_height, yelling_zone_left, yelling_zone_up, yelling_zone_width, yelling_zone_height);
+		}
+
+		// helper for clamping the player bounds
+		function clampPlayerPosition()
+		{
+			if(player_is_petting_dog)
+			{
+				return;
+			}
+
+			if(protagSprite.position.x + protagSprite.vx >= player_bounds_right)
+			{
+				protagSprite.position.x = player_bounds_right;
+			}
+			else if(protagSprite.position.x + protagSprite.vx <= player_bounds_left)
+			{
+				protagSprite.position.x = player_bounds_left;
+			}
+			else
+			{
+				protagSprite.position.x += protagSprite.vx;
+			}
+
+			if(protagSprite.position.y + protagSprite.vy >= player_bounds_down)
+			{
+				protagSprite.position.y = player_bounds_down;
+			}
+			else if(protagSprite.position.y + protagSprite.vy <= player_bounds_up)
+			{
+				protagSprite.position.y = player_bounds_up;
+			}
+			else
+			{
+				protagSprite.position.y += protagSprite.vy;
+			}
+		}
+
+		function score_points()
+		{
+			// score points based on how close the island is to the center
+			// always at least 1, perfect is 100
+			var ideal_x = app_width / 2;
+			var islands_x = islands_container.position.x + (islands_container.width / 2);
+			var diff = Math.abs(islands_x - ideal_x);
+			var realDiff = ideal_x - diff;
+			var ratio = (realDiff / ideal_x);
+			var earned_points = ratio * 100;
+			if(earned_points < 0) { earned_points = 1; }
+			points += Math.floor(earned_points);
+		}
+
+		function interact()
+		{
+			if(areWeInYellingZone())
+			{
+				var x = protagSprite.position.x + (protagSprite.width / 2);
+				var y = protagSprite.position.y - (protagSprite.height / 2);
+				var shout_text = "";
+				for(var i = 0; i < 10; ++i)
+				{
+					var whichChar = Math.floor(Math.random() * 6);
+					if(whichChar == 0)
+					{
+						shout_text += "!";
+					}
+					else if(whichChar == 1)
+					{
+						shout_text += "$";
+					}
+					else if(whichChar == 2)
+					{
+						shout_text += "&";
+					}
+					else if(whichChar == 3)
+					{
+						shout_text += "*";
+					}
+					else if(whichChar == 4)
+					{
+						shout_text += "^";
+					}
+					else if(whichChar == 5)
+					{
+						shout_text += "%";
+					}
+				}
+
+				stage.removeChild(yelling_zone_text);
+				yelling_zone_text = new PIXI.Text(shout_text, yelling_zone_style);
+				yelling_zone_text.position.set(x, y);
+				yelling_zone_text.alpha = 100;
+				yelling_zone_text_timeout = Date.now();
+				stage.addChild(yelling_zone_text);
+
+				score_points();
+			}
+		}
+
+		function AABB(x_a, y_a, width_a, height_a, x_b, y_b, width_b, height_b)
+		{
+			if(x_a < x_b + width_b &&
+				x_a + width_a > x_b &&
+				y_a < y_b + height_b &&
+				y_a + height_a > y_b)
+			{
+				return true;
+			}
+
+			return false;
+		}
+	</script>
+</body>
+</html>
